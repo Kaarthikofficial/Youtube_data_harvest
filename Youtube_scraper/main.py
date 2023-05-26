@@ -10,7 +10,7 @@ import datetime
 
 st.set_page_config(layout='wide')
 requests_cache.install_cache('youtube_cache', expire_after=3600)
-api_key = "AIzaSyAbGTNH6xs62IQdxVTTYh67T6_CjdDZagQ"
+api_key = "AIzaSyAp5tsDKpHezXQP0BfwzqM1YINVARtPS0U"
 youtube = build('youtube', 'v3', developerKey=api_key)
 client = MongoClient("mongodb://localhost:27017/")
 db = client["youtube"]
@@ -18,7 +18,7 @@ db = client["youtube"]
 c1, c2 = st.columns([6, 6])
 
 with c2:
-    c_id = st.text_input("Enter the channel id:", "UCgLxdtdUhc8idwHRpSqOHmw")
+    c_id = st.text_input("Enter the channel id:", "UCGBnz-FR3qaowYsyIEh2-zw")
 
 ch_search = youtube.channels().list(
             id=c_id, part='snippet,statistics,status').execute()
@@ -308,6 +308,7 @@ collection = db[Channel_name]
 
 pla_list = play_lists.copy()
 pla_list.drop('Playlists_count', axis=1, inplace=True)
+# pla_list.drop_duplicates(subset='Playlist_id', keep='first', inplace=True)
 # def convert_datetime_to_string(dt):
 #     return dt.strftime("%Y-%m-%d %H:%M:%S")
 #
@@ -336,42 +337,50 @@ if st.button('Migrate'):
     # Create a cursor object
     cursor = conn.cursor()
 
-    # # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
-    ch_column_mapping = {'id': 'id', 'name': 'channel_name', 'views': 'views', 'subscribers': 'subscribers',
-                         'description': 'description', 'status': 'status'}
-    sql = f"INSERT INTO channel ({', '.join(ch_column_mapping.values())}) VALUES (?, ?, ?, ?, ?, ?)"
+    try:
+        conn.execute('BEGIN TRANSACTION')
+        # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
+        ch_column_mapping = {'id': 'id', 'name': 'channel_name', 'views': 'views', 'subscribers': 'subscribers',
+                             'description': 'description', 'status': 'status'}
+        sql_ch = f"INSERT INTO channel ({', '.join(ch_column_mapping.values())}) VALUES (?, ?, ?, ?, ?, ?)"
 
-    for row in channel_df.itertuples(index=False):
-        cursor.execute(sql, row)
-    #
-    # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
-    # pl_column_mapping = {'Playlist_id': 'playlist_id', 'Playlist_title': 'playlist_name', 'Id': 'id'}
-    # sql = f"INSERT INTO playlists ({', '.join(pl_column_mapping.values())}) VALUES (?, ?, ?)"
-    #
-    # for row in pla_list.itertuples(index=False):
-    #     cursor.execute(sql, row)
+        for row in channel_df.itertuples(index=False):
+            cursor.execute(sql_ch, row)
 
-    # # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
-    # vi_column_mapping = {'playlist_id': 'playlist_id', 'Video ID': 'video_id', 'Title': 'video_name',
-    #                      'Description': 'description', 'Published At': 'published_date', 'View Count': 'view_count',
-    #                      'Like Count': 'like_count', 'Favorite Count': 'favorite_count',
-    #                      'Comment Count': 'comment_count', 'Duration': 'duration',
-    #                      'Thumbnail URL': 'thumbnail', 'Caption Status': 'caption_status'}
-    #
-    # sql = f"INSERT INTO videos ({', '.join(vi_column_mapping.values())}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    #
-    # for row in fi_vid.itertuples(index=False):
-    #     cursor.execute(sql, row)
-    #
-    # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
-    # cm_column_mapping = {'Video ID': 'video_id', 'Comment ID': 'comment_id', 'Author name': 'author',
-    #                      'Comment': 'comment', 'Published at': 'published_date'}
-    # sql = f"INSERT INTO comments ({', '.join(cm_column_mapping.values())}) VALUES (?, ?, ?, ?, ?)"
-    #
-    # for row in comment_df.itertuples(index=False):
-    #     cursor.execute(sql, row)
+        # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
+        pl_column_mapping = {'Playlist_id': 'playlist_id', 'Playlist_title': 'playlist_name', 'Id': 'id'}
+        sql_pl = f"INSERT INTO playlists ({', '.join(pl_column_mapping.values())}) VALUES (?, ?, ?)"
 
-    # Close the connection
-    conn.commit()
-    conn.close()
-    st.success("Data uploaded successfully!")
+        for row in pla_list.itertuples(index=False):
+            cursor.execute(sql_pl, row)
+
+        # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
+        vi_column_mapping = {'playlist_id': 'playlist_id', 'Video ID': 'video_id', 'Title': 'video_name',
+                             'Description': 'description', 'Published At': 'published_date', 'View Count': 'view_count',
+                             'Like Count': 'like_count', 'Favorite Count': 'favorite_count',
+                             'Comment Count': 'comment_count', 'Duration': 'duration',
+                             'Thumbnail URL': 'thumbnail', 'Caption Status': 'caption_status'}
+
+        sql_vi = f"INSERT INTO videos ({', '.join(vi_column_mapping.values())}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+        for row in fi_vid.itertuples(index=False):
+            cursor.execute(sql_vi, row)
+
+        # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
+        cm_column_mapping = {'Video ID': 'video_id', 'Comment ID': 'comment_id', 'Author name': 'author',
+                             'Comment': 'comment', 'Published at': 'published_date'}
+        sql_cm = f"INSERT INTO comments ({', '.join(cm_column_mapping.values())}) VALUES (?, ?, ?, ?, ?)"
+
+        for row in comment_df.itertuples(index=False):
+            cursor.execute(sql_cm, row)
+
+        # Close the connection
+        conn.commit()
+
+        st.success("Data uploaded successfully!")
+    except Exception as e:
+        conn.rollback()  # Rollback the transaction in case of any error
+        st.error(f"An error occurred: {str(e)}")
+
+    finally:
+        conn.close()
