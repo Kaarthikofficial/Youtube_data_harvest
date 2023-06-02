@@ -1,3 +1,4 @@
+# Import necessary packages
 import streamlit as st
 import requests_cache
 import sqlite3
@@ -8,22 +9,22 @@ import datetime
 # import zlib
 # import json
 
+# Configure page for streamlit
 st.set_page_config(layout='wide')
 requests_cache.install_cache('youtube_cache', expire_after=3600)
-api_key = "AIzaSyAp5tsDKpHezXQP0BfwzqM1YINVARtPS0U"
+# Use the api get from GCP
+api_key = "AIzaSyCTq8fH_Zwmw7dWZNj3-DIDyw4wEFPqnd0"
 youtube = build('youtube', 'v3', developerKey=api_key)
-client = MongoClient("mongodb://localhost:27017/")
-db = client["youtube"]
 
+# Create two columns for displaying the output
 c1, c2 = st.columns([6, 6])
 
 with c2:
-    c_id = st.text_input("Enter the channel id:", "UCGBnz-FR3qaowYsyIEh2-zw")
+    c_id = st.text_input("Enter the channel id:", "UCjW5u7vHnvwuXiVQx2ahs4A")
 
+# Create a variable to retrieve channel data using API
 ch_search = youtube.channels().list(
             id=c_id, part='snippet,statistics,status').execute()
-# vi_search = youtube.search().list(
-#             channelId=c_id, part="snippet,id", maxResults=50, order="date", pageToken=next_page_token).execute()
 
 
 def channel_data(response):
@@ -45,6 +46,7 @@ def channel_data(response):
     return channel_dic
 
 
+# Use API to retrieve playlist data
 def playlist_data(response):
     playlists = []
     next_page_token = None
@@ -70,12 +72,13 @@ def playlist_data(response):
     return playlists
 
 
+# Use dataframe to store it as a table
 play_lists = pd.DataFrame(playlist_data(c_id)).copy()
 play_list = play_lists.to_dict('records').copy()
 pl = play_lists["Playlist_id"].tolist().copy()
 
 
-# define function to get videos in a playlist
+# Function to get videos in a playlist
 def get_playlist_videos(playlist_id):
     vis = []
     next_page_token = None
@@ -105,7 +108,7 @@ def get_playlist_videos(playlist_id):
     return vis
 
 
-# define function to get videos in multiple playlists
+# Function to get videos in multiple playlists
 def get_videos_in_playlists(playlists_ids):
     vid = []
     for playlist_id in playlists_ids:
@@ -114,11 +117,12 @@ def get_videos_in_playlists(playlists_ids):
     return vid
 
 
+# Convert video ids in dataframe to list
 pl_lists = pd.DataFrame(get_videos_in_playlists(pl)).copy()
 pl_videos = pl_lists["Video ID"].tolist().copy()
 
 
-# Define a function to retrieve video details for a list of video IDs
+# Function to retrieve video details for a list of video IDs
 def video_data(video_ids):
     videos = []
 
@@ -164,9 +168,10 @@ def video_data(video_ids):
     return videos
 
 
+# Store the video data in dataframe
 df = pd.DataFrame(video_data(pl_videos))
 df_videos = df.copy()
-print(len(df_videos))
+# Check for any missing video in tables
 original_video_ids = set(pl_lists["Video ID"])
 retrieved_video_ids = set(df["Video ID"])
 missing_id = original_video_ids - retrieved_video_ids
@@ -174,6 +179,7 @@ missing = pl_lists[pl_lists["Video ID"].isin(missing_id)]
 pl_lists.drop(missing.index, inplace=True)
 
 
+# Retrieve comments data from youtube
 def comments_data():
     comment_data = []
     for index, row in df_videos.iterrows():
@@ -204,6 +210,7 @@ def comments_data():
 comment_df = pd.DataFrame(comments_data()).copy()
 comment_df['Published at'] = comment_df['Published at'].dt.strftime("%Y-%m-%d %H:%M:%S")
 comment_df.drop_duplicates(subset='Comment ID', keep='first', inplace=True)
+# Create columns to display the result
 c3, c4 = st.columns([4, 12])
 
 header_color = "#FF0000"
@@ -214,19 +221,19 @@ with c3:
 
 with c4:
     st.write(pd.DataFrame(playlist_data(c_id)))
-    st.write(pd.DataFrame(get_videos_in_playlists(pl)))
+    # st.write(pd.DataFrame(get_videos_in_playlists(pl)))
     st.write(pd.DataFrame(video_data(pl_videos)))
 
 comment_list = comments_data()
 pi_video = pl_lists['playlist_id']
 fi_video = df.copy()
 position = 0
+# Insert a column with playlist id in video table
 fi_video.insert(position, 'playlist_id', pi_video)
 fi_video['Published At'] = fi_video['Published At'].dt.strftime("%Y-%m-%d %H:%M:%S")
 f_video = fi_video.to_dict('records').copy()
-print(len(fi_video))
-print(len(pl_lists))
 
+# Create a dictionary to store in mongodb
 channel_dict = {
     'id': channel_data(ch_search)['Id'],
     'name': channel_data(ch_search)['Name of the channel'],
@@ -290,24 +297,27 @@ cha = {
     'status': channel_data(ch_search)['Status'],
     }
 
-channel_dfs = pd.DataFrame.from_dict([cha]).copy()
-channel_df = channel_dfs.copy()
+# channel_dfs = pd.DataFrame.from_dict([cha]).copy()
+# c_df = channel_dfs.copy()
 fi_vid = fi_video.copy()
 fi_vid.drop('Tags', axis=1, inplace=True)
 fi_vid.drop_duplicates(subset='Video ID', keep='first', inplace=True)
-print(fi_vid['Title'].nunique())
 
 
+# Generate name of the collection in mongodb
 def generate_channel_name():
-    collection_count = len(db.list_collection_names())  # Count existing documents and add 1
-    return f"Channel {collection_count + 1}"
+    channel_name = cha['name']
+    return channel_name
 
 
+# Create connection with mongodb
+client = MongoClient("mongodb://localhost:27017/")
+db = client["youtube"]
 Channel_name = generate_channel_name()
 collection = db[Channel_name]
 
-pla_list = play_lists.copy()
-pla_list.drop('Playlists_count', axis=1, inplace=True)
+# pla_list = play_lists.copy()
+# pla_list.drop('Playlists_count', axis=1, inplace=True)
 # pla_list.drop_duplicates(subset='Playlist_id', keep='first', inplace=True)
 # def convert_datetime_to_string(dt):
 #     return dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -324,63 +334,284 @@ pla_list.drop('Playlists_count', axis=1, inplace=True)
 # }
 # compressed = compress_data(converted_data)
 
+# Create a button to upload data retrieved from youtube api
 if st.button('Upload'):
     # Upload the document to MongoDB
     collection.insert_one(channel_dict)
     st.success("Data uploaded successfully!")
 
+# Create a selectbox for data to be migrated from mongodb
+channel_selected = st.selectbox("Select channel", db.list_collection_names())
 
-# Migration
+
+# Migration to sqlite
 if st.button('Migrate'):
+    collection = db[channel_selected]
+    # Retrieve documents from the collection
+    documents = collection.find()
+
+    # Initialize empty lists to store extracted data
+    channel_dat = []
+    playlist_dat = []
+    video_dat = []
+    comment_dat = []
+
+    # Iterate over the documents
+    for document in documents:
+        # Extract channel information
+        channel_info = {
+            'id': document['id'],
+            'name': document['name'],
+            'views': document['views'],
+            'subscribers': document['subscribers'],
+            'description': document['description'],
+            'status': document['status']
+        }
+        channel_dat.append(channel_info)
+
+        # Extract playlist information
+        for playlist in document['playlists']:
+            playlist_info = {
+                'Playlist id': playlist['Playlist id'],
+                'Playlist name': playlist['Playlist name'],
+                'video_count': playlist['video_count'],
+                'id': document['id']
+            }
+            playlist_dat.append(playlist_info)
+
+            # Extract video information
+            for video in playlist['videos']:
+                video_info = {
+                    'Playlist id': playlist['Playlist id'],
+                    'Video_id': video['Video_id'],
+                    'Title': video['Title'],
+                    'Description': video['Description'],
+                    'Published at': video['Published at'],
+                    'View Count': video['View_count'],
+                    'Like Count': video['Like_count'],
+                    'Favorite Count': video['Favorite_count'],
+                    'Comment Count': video['Comment_count'],
+                    'Duration': video['Duration'],
+                    'Thumbnail': video['Thumbnail'],
+                    'Caption Status': video['Caption_status']
+                }
+                video_dat.append(video_info)
+
+                # Extract comment information
+                for comment in video['comments']:
+                    comment_info = {
+                        'Video_id': comment['Video_id'],
+                        'Comment ID': comment['Comment ID'],
+                        'Author name': comment['Author name'],
+                        'Comment': comment['Comment'],
+                        'Published at': comment['Published at']
+                    }
+                    comment_dat.append(comment_info)
+
+    # Create dataframes
+    channel_df = pd.DataFrame(channel_dat)
+    playlist_df = pd.DataFrame(playlist_dat)
+    playlist_df.drop('video_count', axis=1, inplace=True)
+    playlist_df.drop_duplicates(subset='Playlist id', keep='first', inplace=True)
+    video_df = pd.DataFrame(video_dat)
+    video_df['Published at'] = video_df['Published at'].astype(str)
+    video_df.drop_duplicates(subset='Video_id', keep='first', inplace=True)
+    comment_df = pd.DataFrame(comment_dat)
+    comment_df['Published at'] = comment_df['Published at'].astype(str)
+    comment_df.drop_duplicates(subset='Comment ID', keep='first', inplace=True)
+
     conn = sqlite3.connect('C:\sqlite\youtube.db')
 
     # Create a cursor object
     cursor = conn.cursor()
 
-    try:
-        conn.execute('BEGIN TRANSACTION')
-        # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
-        ch_column_mapping = {'id': 'id', 'name': 'channel_name', 'views': 'views', 'subscribers': 'subscribers',
-                             'description': 'description', 'status': 'status'}
-        sql_ch = f"INSERT INTO channel ({', '.join(ch_column_mapping.values())}) VALUES (?, ?, ?, ?, ?, ?)"
+    conn.execute('BEGIN TRANSACTION')
+    # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
+    ch_column_mapping = {'id': 'id', 'name': 'channel_name', 'views': 'views', 'subscribers': 'subscribers',
+                         'description': 'description', 'status': 'status'}
+    sql_ch = f"INSERT INTO channel ({', '.join(ch_column_mapping.values())}) VALUES (?, ?, ?, ?, ?, ?)"
 
-        for row in channel_df.itertuples(index=False):
-            cursor.execute(sql_ch, row)
+    for row in channel_df.itertuples(index=False):
+        cursor.execute(sql_ch, row)
 
-        # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
-        pl_column_mapping = {'Playlist_id': 'playlist_id', 'Playlist_title': 'playlist_name', 'Id': 'id'}
-        sql_pl = f"INSERT INTO playlists ({', '.join(pl_column_mapping.values())}) VALUES (?, ?, ?)"
+    # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
+    pl_column_mapping = {'Playlist id': 'playlist_id', 'Playlist_name': 'playlist_name', 'id': 'id'}
+    sql_pl = f"INSERT INTO playlists ({', '.join(pl_column_mapping.values())}) VALUES (?, ?, ?)"
 
-        for row in pla_list.itertuples(index=False):
-            cursor.execute(sql_pl, row)
+    for row in playlist_df.itertuples(index=False):
+        cursor.execute(sql_pl, row)
 
-        # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
-        vi_column_mapping = {'playlist_id': 'playlist_id', 'Video ID': 'video_id', 'Title': 'video_name',
-                             'Description': 'description', 'Published At': 'published_date', 'View Count': 'view_count',
-                             'Like Count': 'like_count', 'Favorite Count': 'favorite_count',
-                             'Comment Count': 'comment_count', 'Duration': 'duration',
-                             'Thumbnail URL': 'thumbnail', 'Caption Status': 'caption_status'}
+    # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
+    vi_column_mapping = {'Playlist id': 'playlist_id', 'Video_id': 'video_id', 'Title': 'video_name',
+                         'Description': 'description', 'Published at': 'published_date', 'View Count': 'view_count',
+                         'Like Count': 'like_count', 'Favorite Count': 'favorite_count',
+                         'Comment Count': 'comment_count', 'Duration': 'duration',
+                         'Thumbnail': 'thumbnail', 'Caption Status': 'caption_status'}
 
-        sql_vi = f"INSERT INTO videos ({', '.join(vi_column_mapping.values())}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    sql_vi = f"INSERT INTO videos ({', '.join(vi_column_mapping.values())}) " \
+             f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
-        for row in fi_vid.itertuples(index=False):
-            cursor.execute(sql_vi, row)
+    for row in video_df.itertuples(index=False):
+        cursor.execute(sql_vi, row)
 
-        # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
-        cm_column_mapping = {'Video ID': 'video_id', 'Comment ID': 'comment_id', 'Author name': 'author',
-                             'Comment': 'comment', 'Published at': 'published_date'}
-        sql_cm = f"INSERT INTO comments ({', '.join(cm_column_mapping.values())}) VALUES (?, ?, ?, ?, ?)"
+    # Specify column mapping if needed (assuming column names in the table are 'column1' and 'column2')
+    cm_column_mapping = {'Video_id': 'video_id', 'Comment ID': 'comment_id', 'Author name': 'author',
+                         'Comment': 'comment', 'Published at': 'published_date'}
+    sql_cm = f"INSERT INTO comments ({', '.join(cm_column_mapping.values())}) VALUES (?, ?, ?, ?, ?)"
 
-        for row in comment_df.itertuples(index=False):
-            cursor.execute(sql_cm, row)
+    for row in comment_df.itertuples(index=False):
+        cursor.execute(sql_cm, row)
 
-        # Close the connection
-        conn.commit()
+    # Close the connection
+    conn.commit()
 
-        st.success("Data uploaded successfully!")
-    except Exception as e:
-        conn.rollback()  # Rollback the transaction in case of any error
-        st.error(f"An error occurred: {str(e)}")
+    st.success("Data uploaded successfully!")
+    conn.close()
 
-    finally:
-        conn.close()
+
+def execute_query(queri, column):
+    # Connect to the SQLite database
+    connect = sqlite3.connect('C:\sqlite\youtube.db')
+
+    # Create a cursor object to execute SQL queries
+    cursors = connect.cursor()
+
+    # Execute the query
+    cursors.execute(queri)
+
+    # Fetch all the results
+    results = cursors.fetchall()
+
+    # Create a DataFrame from the results
+    df_1 = pd.DataFrame(results, columns=column)
+
+    # Close the cursor and connection
+    cursors.close()
+    connect.close()
+
+    return df_1
+
+
+if st.button('question 1'):
+    query = """
+        SELECT c.id, c.channel_name, p.playlist_id, p.playlist_name, v.video_id, v.video_name
+        FROM channel c
+        JOIN playlists p ON c.id = p.id
+        JOIN videos v ON p.playlist_id = v.playlist_id
+    """
+    columns = ['Channel ID', 'Channel Name', 'Playlist ID', 'Playlist Name', 'Video ID', 'Video Name']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 2'):
+    query = """
+        SELECT c.channel_name, COUNT(*) as video_count
+        FROM channel c
+        JOIN playlists p ON c.id = p.id
+        JOIN videos v ON p.playlist_id = v.playlist_id
+        GROUP BY c.channel_name
+        ORDER BY video_count DESC
+    """
+    columns = ['Channel Name', 'Video Count']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 3'):
+    query = """
+        SELECT v.video_name, c.channel_name, CAST(v.view_count AS INTEGER) AS view_count
+        FROM videos v
+        JOIN playlists p ON v.playlist_id = p.playlist_id
+        JOIN channel c ON p.id = c.id
+        ORDER BY CAST(v.view_count AS INTEGER) DESC
+        LIMIT 10 
+    """
+    columns = ['Video Title', 'Channel Name', 'View Count']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 4'):
+    query = """
+        SELECT video_name, CAST(comment_count AS INTEGER) AS comments_count
+        FROM videos
+        ORDER BY CAST(comment_count AS INTEGER) DESC
+        LIMIT 20
+    """
+    columns = ['Video Title', 'Comment Count']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 5'):
+    query = """
+        SELECT c.channel_name, CAST(v.like_count AS INTEGER) AS likes_count
+        FROM videos v
+        JOIN playlists p ON v.playlist_id = p.playlist_id
+        JOIN channel c ON p.id = c.id
+        ORDER BY CAST(like_count AS INTEGER) DESC
+        LIMIT 10
+    """
+    columns = ['Channel name', 'Like Count']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 6'):
+    query = """
+        SELECT video_name, CAST(like_count AS INTEGER) AS likes_count
+        FROM videos 
+        ORDER BY CAST(like_count AS INTEGER) DESC
+        LIMIT 10
+    """
+    columns = ['Video Title', 'Like Count']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 7'):
+    query = """
+        SELECT c.channel_name, CAST(v.view_count AS INTEGER) AS views_count
+        FROM videos v
+        JOIN playlists p ON v.playlist_id = p.playlist_id
+        JOIN channel c ON p.id = c.id
+        ORDER BY CAST(view_count AS INTEGER) DESC
+        LIMIT 10
+    """
+    columns = ['Channel name', 'View Count']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 8'):
+    query = """
+        SELECT DISTINCT c.channel_name
+        FROM channel c
+        JOIN playlists p ON c.id = p.id
+        JOIN videos v ON p.playlist_id = v.playlist_id
+        WHERE v.published_date LIKE '%2022%'
+    """
+    columns = ['Channel name']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 9'):
+    query = """
+        SELECT c.channel_name, AVG(CAST(SUBSTR(v.duration, 3, INSTR(v.duration, 'M') - 3) AS INTEGER)) 
+        AS average_duration
+        FROM channel c
+        JOIN playlists p ON c.id = p.id
+        JOIN videos v ON p.playlist_id = v.playlist_id
+        GROUP BY c.id
+    """
+    columns = ['Channel name', 'Average duration']
+    df = execute_query(query, columns)
+    st.table(df)
+
+if st.button('question 10'):
+    query = """
+        SELECT v.video_name, c.channel_name, CAST(v.comment_count AS INTEGER) AS comment_count
+        FROM videos v
+        JOIN playlists p ON v.playlist_id = p.playlist_id
+        JOIN channel c ON p.id = c.id
+        GROUP BY v.video_name, c.channel_name
+        ORDER BY comment_count DESC
+        LIMIT 10
+    """
+    columns = ['Video title', 'Channel name', 'Comment count']
+    df = execute_query(query, columns)
+    st.table(df)
